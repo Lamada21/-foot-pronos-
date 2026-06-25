@@ -25,43 +25,45 @@ export default async function LeaguePage({ params }: { params: Promise<{ slug: s
   const config = leagueConfig[slug];
   if (!config) notFound();
 
+  // Données de la base (peuvent être vides pendant la génération statique sur Vercel)
   const league = await dbGet('SELECT * FROM leagues WHERE slug = ?', slug) as any;
-  if (!league) notFound();
+  // Valeur par défaut pour éviter TypeError si league est null (build Vercel sans DB)
+  const leagueId = league?.id ?? -1;
 
   const standings = await dbAll(`
     SELECT s.*, t.name, t.flag, t.coach, t.stadium, t.budget, t.market_value, t.color as teamColor
     FROM standings s JOIN teams t ON s.team_id = t.id
     WHERE s.league_id = ? ORDER BY s.position
-  `, league.id) as any[];
+  `, leagueId) as any[];
 
   const topScorers = await dbAll(`
     SELECT p.name, p.goals, p.assists, p.appearances, p.rating, p.position, p.flag as playerFlag, t.name as teamName, t.flag as teamFlag
     FROM players p JOIN teams t ON p.team_id = t.id
     WHERE t.league_id = ? ORDER BY p.goals DESC LIMIT 10
-  `, league.id) as any[];
+  `, leagueId) as any[];
 
   const topAssisters = await dbAll(`
     SELECT p.name, p.assists, p.goals, p.appearances, p.rating, p.flag as playerFlag, t.name as teamName, t.flag as teamFlag
     FROM players p JOIN teams t ON p.team_id = t.id
     WHERE t.league_id = ? ORDER BY p.assists DESC LIMIT 10
-  `, league.id) as any[];
+  `, leagueId) as any[];
 
   const topDecisive = await dbAll(`
     SELECT p.name, (p.goals + p.assists) as total, p.goals, p.assists, p.appearances, p.rating,
       p.flag as playerFlag, t.name as teamName, t.flag as teamFlag
     FROM players p JOIN teams t ON p.team_id = t.id
     WHERE t.league_id = ? ORDER BY (p.goals + p.assists) DESC LIMIT 10
-  `, league.id) as any[];
+  `, leagueId) as any[];
 
   const teams = await dbAll(`
     SELECT * FROM teams WHERE league_id = ? ORDER BY name
-  `, league.id) as any[];
+  `, leagueId) as any[];
 
   const history = await dbAll(`
     SELECT h.*, t.name, t.flag FROM historical_standings h
     JOIN teams t ON h.team_id = t.id
     WHERE h.league_id = ? ORDER BY h.season, h.position
-  `, league.id) as any[];
+  `, leagueId) as any[];
 
   return (
     <div className="space-y-6">
