@@ -75,7 +75,7 @@ export default async function LeaguePage({ params }: { params: Promise<{ slug: s
         </div>
       </div>
 
-      {/* Quick Stats */}
+      {standings.length > 0 && <>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-xl bg-gradient-to-br from-emerald-500/8 to-emerald-600/5 border border-emerald-500/15 p-4">
           <p className="text-2xl font-black text-emerald-400">{standings[0]?.name}</p>
@@ -94,7 +94,28 @@ export default async function LeaguePage({ params }: { params: Promise<{ slug: s
           <p className="text-[10px] text-gray-500 mt-1">Équipes</p>
         </div>
       </div>
+      </>}
 
+      {/* Message si pas de données */}
+      {standings.length === 0 && (
+        <div className="rounded-2xl border border-amber-500/15 bg-gradient-to-br from-amber-500/5 to-transparent p-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 mb-4">
+            <Trophy className="w-8 h-8 text-amber-400" />
+          </div>
+          <h2 className="text-lg font-bold text-amber-300">Données à venir</h2>
+          <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto">
+            Les données de cette ligue seront disponibles prochainement.
+            Le scraping des classements, effectifs et statistiques est en cours.
+          </p>
+          <div className="flex items-center justify-center gap-2 mt-4 text-xs text-gray-500">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            Mise à jour automatique dans quelques minutes
+          </div>
+        </div>
+      )}
+
+      {standings.length > 0 && (
+      <>
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Standings */}
@@ -288,6 +309,8 @@ export default async function LeaguePage({ params }: { params: Promise<{ slug: s
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

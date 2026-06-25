@@ -59,6 +59,22 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
         Retour au championnat
       </Link>
 
+      {/* Message si données indisponibles */}
+      {players.length === 0 && (
+        <div className="rounded-2xl border border-amber-500/15 bg-gradient-to-br from-amber-500/5 to-transparent p-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 mb-4">
+            <Users className="w-8 h-8 text-amber-400" />
+          </div>
+          <h2 className="text-lg font-bold text-amber-300">Données à venir</h2>
+          <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto">
+            Les données de cette équipe seront disponibles prochainement.
+            Le scraping des effectifs est en cours.
+          </p>
+        </div>
+      )}
+
+      {players.length > 0 && (
+      <>
       {/* Team Header */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-white/[0.05] via-gray-900 to-gray-950 border border-white/10 p-6 sm:p-8">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/[0.03] rounded-full blur-3xl" />
@@ -218,6 +234,8 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
         <span className="flex items-center gap-1.5"><Swords className="w-3 h-3 text-green-400" /> Milieux</span>
         <span className="flex items-center gap-1.5"><Medal className="w-3 h-3 text-red-400" /> Attaquants</span>
       </div>
+      </>
+      )}
     </div>
   );
 }
