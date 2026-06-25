@@ -12,13 +12,9 @@ const leagueConfig: Record<string, { name: string; flag: string; color: string }
   'ligue2': { name: 'Ligue 2 BKT', flag: '🇫🇷', color: 'from-yellow-600 to-yellow-800' },
 };
 
-// Pré-générer toutes les pages de championnats (pour le déploiement Vercel)
-export function generateStaticParams() {
-  return Object.keys(leagueConfig).map(slug => ({ slug }));
-}
-
-// Revalidation toutes les heures pour mettre à jour les données scrappées
-export const revalidate = 3600;
+// Mode dynamique : les pages sont servies via Neon PostgreSQL sur Vercel
+// (la static generation échouait car SQLite n'est pas disponible sur Vercel)
+export const dynamic = 'force-dynamic';
 
 export default async function LeaguePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
