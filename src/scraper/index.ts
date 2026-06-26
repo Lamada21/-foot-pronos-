@@ -1,6 +1,6 @@
 import { scrapeStandings, saveStandingsToDb, ScrapedStanding } from './standings';
 import { scrapeSquad, saveSquadToDb } from './squads';
-import { scrapeTopScorers, scrapeTopAssisters, ScrapedPlayerStat } from './stats';
+import { scrapeTopScorers, scrapeTopAssisters, saveStatsToDb, ScrapedPlayerStat } from './stats';
 import { scrapeTransfers, ScrapedTransfer } from './transfers';
 import db from '@/lib/db';
 
@@ -73,6 +73,10 @@ export async function scrapeLeague(
   // 4. Meilleurs passeurs
   console.log(`\n--- Scraping passeurs: ${leagueRow.name} ---`);
   const topAssisters = await scrapeTopAssisters(leagueSlug, season);
+
+  // Sauvegarder les stats dans la DB (buts + passes)
+  console.log(`\n--- Sauvegarde stats joueurs: ${leagueRow.name} ---`);
+  await saveStatsToDb(leagueRow.id, topScorers, topAssisters);
 
   // 5. Transferts
   console.log(`\n--- Scraping transferts: ${leagueRow.name} ---`);

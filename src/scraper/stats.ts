@@ -1,5 +1,6 @@
 import { fetchPage, getText, parseMarketValue, type CheerioDoc } from './client';
 import { LEAGUE_TM_SLUGS, LEAGUE_COMPETITION_IDS } from './config';
+import { dbAll, dbRun } from '@/lib/db';
 
 export interface ScrapedPlayerStat {
   name: string;
@@ -9,6 +10,76 @@ export interface ScrapedPlayerStat {
   appearances: number;
   marketValue: string;
   nationality: string;
+}
+
+/**
+ * Sauvegarde les stats (buteurs + passeurs) dans la table players.
+ * Match les joueurs par nom + équipe pour mettre à jour goals/assists/appearances.
+ */
+export async function saveStatsToDb(
+  leagueId: string,
+  topScorers: ScrapedPlayerStat[],
+  topAssisters: ScrapedPlayerStat[]
+): Promise<void> {
+  // 1. Récupérer les équipes de la ligue
+  const teams = await dbAll('SELECT id, name FROM teams WHERE league_id = ?', leagueId) as { id: string; name: string }[];
+  if (teams.length === 0) {
+    console.warn('[scraper] Aucune équipe trouvée pour la ligue');
+    return;
+  }
+
+  // 2. Construire un mapping teamName → team_id
+  const teamNameToId: Record<string, string> = {};
+  for (const t of teams) {
+    teamNameToId[t.name.toLowerCase()] = t.id;
+  }
+
+  // 3. Récupérer tous les joueurs des équipes de cette ligue
+  const placeholders = teams.map(() => '?').join(',');
+  const teamIds = teams.map(t => t.id);
+  const allPlayers = await dbAll(
+    `SELECT id, name, team_id FROM players WHERE team_id IN (${placeholders})`,
+    ...teamIds
+  ) as { id: string; name: string; team_id: string }[];
+
+  // 4. Mapper les stats par joueur (nom + équipe → stats)
+  const statsMap = new Map<string, { goals: number; assists: number; appearances: number }>();
+
+  // Ajouter les buteurs
+  for (const s of topScorers) {
+    const key = `${s.name.toLowerCase()}|${(teamNameToId[s.teamName?.toLowerCase()] || s.teamName?.toLowerCase())}`;
+    const existing = statsMap.get(key) || { goals: 0, assists: 0, appearances: 0 };
+    existing.goals = Math.max(existing.goals, s.goals);
+    existing.assists = Math.max(existing.assists, s.assists);
+    existing.appearances = Math.max(existing.appearances, s.appearances);
+    statsMap.set(key, existing);
+  }
+
+  // Ajouter les passeurs
+  for (const s of topAssisters) {
+    const key = `${s.name.toLowerCase()}|${(teamNameToId[s.teamName?.toLowerCase()] || s.teamName?.toLowerCase())}`;
+    const existing = statsMap.get(key) || { goals: 0, assists: 0, appearances: 0 };
+    existing.goals = Math.max(existing.goals, s.goals);
+    existing.assists = Math.max(existing.assists, s.assists);
+    existing.appearances = Math.max(existing.appearances, s.appearances);
+    statsMap.set(key, existing);
+  }
+
+  // 5. Matcher avec les joueurs DB et mettre à jour
+  let updated = 0;
+  for (const player of allPlayers) {
+    const key = `${player.name.toLowerCase()}|${player.team_id}`;
+    const stats = statsMap.get(key);
+    if (stats && (stats.goals > 0 || stats.assists > 0 || stats.appearances > 0)) {
+      await dbRun(
+        'UPDATE players SET goals = ?, assists = ?, appearances = ? WHERE id = ?',
+        stats.goals, stats.assists, stats.appearances, player.id
+      );
+      updated++;
+    }
+  }
+
+  console.log(`[scraper] Stats mises à jour pour ${updated}/${allPlayers.length} joueurs`);
 }
 
 /**
