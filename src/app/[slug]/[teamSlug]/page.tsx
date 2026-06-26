@@ -152,7 +152,9 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
                   <span className="text-[10px] text-gray-500">{posPlayers.length}</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                  {posPlayers.map((p: any) => (
+                  {posPlayers.map((p: any) => {
+                    const hasStats = p.goals > 0 || p.assists > 0 || p.appearances > 0;
+                    return (
                     <div key={p.id} className="flex items-center gap-3 bg-white/[0.02] rounded-xl px-3.5 py-2.5 hover:bg-white/[0.05] border border-transparent hover:border-white/5 transition-all duration-200">
                       <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
                         p.position === 'GK' ? 'bg-gradient-to-br from-yellow-500/15 to-amber-500/5 text-yellow-400' :
@@ -167,12 +169,32 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
                           <span>{p.flag}</span>
                           {p.market_value && <span>• {p.market_value}</span>}
                         </p>
+                        {hasStats && (
+                          <div className="flex items-center gap-2 mt-1.5">
+                            {p.goals > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-rose-400 bg-rose-500/8 px-1.5 py-0.5 rounded-md">
+                                ⚽ {p.goals}
+                              </span>
+                            )}
+                            {p.assists > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-400 bg-blue-500/8 px-1.5 py-0.5 rounded-md">
+                                🎯 {p.assists}
+                              </span>
+                            )}
+                            {p.appearances > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-gray-400 bg-white/5 px-1.5 py-0.5 rounded-md">
+                                📋 {p.appearances}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {p.rating && (
                         <span className="text-[10px] font-bold text-emerald-400">{p.rating.toFixed(1)}</span>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
