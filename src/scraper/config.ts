@@ -35,25 +35,25 @@ export const LEAGUE_TM_SLUGS: Record<string, string> = {
 /** Mapping: équipe_id (DB) → club_id Transfermarkt */
 export const TEAM_TM_IDS: Record<string, number> = {
   // Ligue 2
-  metz: 229,
+  metz: 347,
   parisfc: 370,
-  bastia: 694,
+  bastia: 595,
   annecy: 58830,
-  lorient: 579,
+  lorient: 1158,
   caen: 416,
-  amiens: 1154,
-  redstar: 4293,
+  amiens: 1416,
+  redstar: 1154,
   // Ligue 1
   psg: 583,
   marseille: 244,
   monaco: 162,
   lyon: 1041,
   lille: 1083,
-  nice: 4177,
+  nice: 417,
   rennes: 273,
   lens: 1508,
-  brest: 110012,
-  strasbourg: 674,
+  brest: 3911,
+  strasbourg: 667,
   // Premier League
   mancity: 281,
   arsenal: 11,
