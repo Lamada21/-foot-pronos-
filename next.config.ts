@@ -6,7 +6,7 @@ const nextConfig = {
     optimizePackageImports: ['lucide-react', 'drizzle-orm'],
   },
   // Exclure better-sqlite3 du bundle client
-  serverExternalPackages: ['better-sqlite3', '@neondatabase/serverless'],
+  serverExternalPackages: ['better-sqlite3', 'pg'],
 };
 
 export default nextConfig;
