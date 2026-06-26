@@ -12,10 +12,51 @@ export interface ScrapedPlayerStat {
   nationality: string;
 }
 
+// ─── Fuzzy matching helpers ─────────────────────────────────────────────
+
+/** Distance de Levenshtein entre deux chaînes */
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/** Normalise un nom : supprime accents, tirets, espaces superflus */
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // enlève accents
+    .replace(/[^a-z0-9\s-]/g, '') // garde lettres, chiffres, espaces, tirets
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Similarité entre deux noms (0 = différent, 1 = identique).
+ * Utilise Levenshtein normalisé par la longueur max.
+ */
+function nameSimilarity(name1: string, name2: string): number {
+  const a = normalizeName(name1);
+  const b = normalizeName(name2);
+  if (a === b) return 1;
+  if (a.length === 0 || b.length === 0) return 0;
+  const dist = levenshtein(a, b);
+  return 1 - dist / Math.max(a.length, b.length);
+}
+
 /**
  * Sauvegarde les stats (buteurs + passeurs) dans la table players.
- * Match les joueurs par nom (case-insensitive) au sein de la ligue.
- * N'utilise PAS le teamName du scrap (trop fragile), seulement les noms de joueurs.
+ * Match les joueurs par nom : d'abord exact (case-insensitive), puis fuzzy (similarité > 0.8).
  */
 export async function saveStatsToDb(
   leagueId: string,
@@ -37,27 +78,54 @@ export async function saveStatsToDb(
     ...teamIds
   ) as { id: string; name: string }[];
 
-  // 3. Construire un map nom → stats à partir des deux sources
-  const statsByPlayerName = new Map<string, { goals: number; assists: number; appearances: number }>();
+  // 3. Construire un map nom normalisé → stats à partir des deux sources
+  const statsByNormName = new Map<string, { goals: number; assists: number; appearances: number; originalName: string }>();
 
   for (const s of [...topScorers, ...topAssisters]) {
-    const key = s.name.toLowerCase().trim();
-    const existing = statsByPlayerName.get(key) || { goals: 0, assists: 0, appearances: 0 };
+    const key = normalizeName(s.name);
+    if (!key) continue;
+    const existing = statsByNormName.get(key) || { goals: 0, assists: 0, appearances: 0, originalName: s.name };
     existing.goals = Math.max(existing.goals, s.goals);
     existing.assists = Math.max(existing.assists, s.assists);
     existing.appearances = Math.max(existing.appearances, s.appearances);
-    statsByPlayerName.set(key, existing);
+    statsByNormName.set(key, existing);
   }
 
-  // 4. Matcher par nom et mettre à jour
+  // 4. Matcher chaque joueur DB : exact → fuzzy → rien
   let updated = 0;
+  const SIMILARITY_THRESHOLD = 0.7; // 0.7 pour capturer les initiales (ex: "K. Mbappé" ≈ "Kylian Mbappé")
+
   for (const player of allPlayers) {
-    const key = player.name.toLowerCase().trim();
-    const stats = statsByPlayerName.get(key);
-    if (stats && (stats.goals > 0 || stats.assists > 0 || stats.appearances > 0)) {
+    const normDbName = normalizeName(player.name);
+    if (!normDbName) continue;
+
+    // 4a. Tentative de match exact (nom normalisé)
+    let match = statsByNormName.get(normDbName);
+
+    // 4b. Si pas de match exact, essayer fuzzy sur tous les noms disponibles
+    if (!match) {
+      let bestScore = 0;
+      let bestKey = '';
+      for (const [scrapedNorm, scrapedStats] of statsByNormName) {
+        const score = nameSimilarity(normDbName, scrapedNorm);
+        if (score > bestScore) {
+          bestScore = score;
+          bestKey = scrapedNorm;
+        }
+      }
+      if (bestScore >= SIMILARITY_THRESHOLD && bestKey) {
+        match = statsByNormName.get(bestKey);
+        if (match) {
+          console.log(`[scraper] Fuzzy match: "${player.name}" ≈ "${match.originalName}" (score: ${bestScore.toFixed(2)})`);
+        }
+      }
+    }
+
+    // 4c. Appliquer les stats si match trouvé
+    if (match && (match.goals > 0 || match.assists > 0 || match.appearances > 0)) {
       await dbRun(
         'UPDATE players SET goals = ?, assists = ?, appearances = ? WHERE id = ?',
-        stats.goals, stats.assists, stats.appearances, player.id
+        match.goals, match.assists, match.appearances, player.id
       );
       updated++;
     }
