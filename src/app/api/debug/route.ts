@@ -14,34 +14,58 @@ export async function GET() {
     neonTest: {},
   };
 
-  // Test direct Neon connection
+  // Test direct Neon connection via HTTP (bypass @neondatabase/serverless driver)
   if (process.env.DATABASE_URL) {
     try {
-      const { neon } = await import('@neondatabase/serverless');
-      const sql = neon(process.env.DATABASE_URL!);
-      info.neonTest.imported = true;
+      // Extract host from DATABASE_URL
+      const dbUrl = new URL(process.env.DATABASE_URL);
+      const neonHost = dbUrl.host;
+      const auth = dbUrl.username + ':' + dbUrl.password;
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + Buffer.from(auth).toString('base64'),
+      };
+      info.neonTest.dbHost = neonHost;
 
-      // Try to create a test table
-      await sql.unsafe('CREATE TABLE IF NOT EXISTS _debug_test (id SERIAL PRIMARY KEY, val TEXT)');
-      info.neonTest.createTable = true;
+      // Test: create table
+      const createRes = await fetch(`https://${neonHost}/sql`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: 'CREATE TABLE IF NOT EXISTS _debug_test (id SERIAL PRIMARY KEY, val TEXT)' }),
+      });
+      const createJson = await createRes.json();
+      info.neonTest.createRes = createJson;
 
-      // Try to insert
-      await sql.unsafe("INSERT INTO _debug_test (val) VALUES ('hello')");
-      info.neonTest.insert = true;
+      // Test: insert
+      const insertRes = await fetch(`https://${neonHost}/sql`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: "INSERT INTO _debug_test (val) VALUES ('hello')" }),
+      });
+      info.neonTest.insertRes = await insertRes.json();
 
-      // Try to read back
-      const result = await sql.unsafe('SELECT * FROM _debug_test');
-      info.neonTest.select = result;
+      // Test: select
+      const selectRes = await fetch(`https://${neonHost}/sql`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: 'SELECT * FROM _debug_test' }),
+      });
+      info.neonTest.selectRes = await selectRes.json();
 
-      // Clean up
-      await sql.unsafe('DROP TABLE IF EXISTS _debug_test');
-      info.neonTest.cleanup = true;
+      // Test: information_schema
+      const schemaRes = await fetch(`https://${neonHost}/sql`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name" }),
+      });
+      info.neonTest.schemaRes = await schemaRes.json();
 
-      // Also try querying for real tables
-      const realTables = await sql.unsafe(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"
-      );
-      info.neonTest.directTables = realTables;
+      // Cleanup
+      await fetch(`https://${neonHost}/sql`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: 'DROP TABLE IF EXISTS _debug_test' }),
+      });
     } catch (e: any) {
       info.neonTest.error = e.message;
       info.neonTest.errorStack = e.stack?.split('\n').slice(0, 5).join('\n');
