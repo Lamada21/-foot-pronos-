@@ -35,11 +35,12 @@ let neonQuery: ((sql: string, params?: any[]) => Promise<any[]>) | null = null;
 if (USE_NEON) {
   const { neon } = require('@neondatabase/serverless');
   const sql = neon(process.env.DATABASE_URL!);
-  neonQuery = async (sqlText: string, params: any[] = []) => {
+  neonQuery = async (queryText: string, params: any[] = []) => {
     // Convertir ? → $1, $2, ... pour PostgreSQL
     let idx = 0;
-    const pgSql = sqlText.replace(/\?/g, () => `$${++idx}`);
-    const result = await sql.unsafe(pgSql, params);
+    const pgSql = queryText.replace(/\?/g, () => `$${++idx}`);
+    // Note: utiliser sql() directement, PAS sql.unsafe() qui ne fait que retourner {sql: query} sans exécuter
+    const result = await sql(pgSql, params);
     return Array.isArray(result) ? result : (result as any)?.rows || [];
   };
 }
