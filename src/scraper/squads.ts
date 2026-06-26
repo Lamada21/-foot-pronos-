@@ -1,13 +1,12 @@
 import { fetchPage, getText, parseMarketValue } from './client';
 import { TEAM_TM_SLUGS, TEAM_TM_IDS, POSITION_MAP } from './config';
-import db from '@/lib/db';
+import db, { dbRun } from '@/lib/db';
 
 export interface ScrapedPlayer {
   name: string;
   position: string;
   number: number | null;
   nationality: string;
-  birthDate: string;
   marketValue: string;
 }
 
@@ -28,7 +27,7 @@ export async function scrapeSquad(
   const tmSlug = TEAM_TM_SLUGS[teamId];
   const clubId = TEAM_TM_IDS[teamId];
   if (!tmSlug || !clubId) {
-    console.warn(`[scraper] Pas de mapping pour l'équipe: ${teamId}`);
+    console.warn(`[scraper] Pas de mapping: ${teamId}`);
     return null;
   }
 
@@ -38,73 +37,50 @@ export async function scrapeSquad(
   try {
     const $ = await fetchPage(path);
 
-    // Récupérer l'entraîneur
-    const coachEl = $('.trainer-name, [class*="trainer"] a, .profilname a, .coach a');
-    // Aussi possible de trouver dans le profil du club
-    const coachRows = $('table tbody tr').filter((_, tr) => {
-      return $(tr).text().toLowerCase().includes('entraîneur') ||
-             $(tr).text().toLowerCase().includes('coach') ||
-             $(tr).text().toLowerCase().includes('trainer');
-    });
+    // Récupérer l'entraîneur depuis les infos du club
     let coach = '';
-    coachRows.each((_, row) => {
-      const cells = $(row).find('td');
-      if (cells.length >= 2) {
-        coach = getText($, cells[1]);
-      }
-    });
-    if (!coach) {
-      coach = getText($, coachEl[0]);
-    }
-    // Fallback: chercher dans les infos du club
-    if (!coach) {
-      const infos = $('.data-header__club-info, .data-header__info');
-      coach = infos.text().split('Entraîneur')[1]?.split('\n')[0]?.trim() || '';
+    const bodyText = $('body').text();
+    // Chercher "Entraîneur" ou "Trainer" dans le texte
+    const coachMatch = bodyText.match(/(?:Entraîneur|Entraineur|Trainer)[^\n]*[.:]\s*([^\n]+)/i);
+    if (coachMatch) {
+      coach = coachMatch[1].trim();
     }
 
-    // Scraper les joueurs - Transfermarkt utilise .responsive-table > .items
+    // Scraper les joueurs depuis table.items
     const players: ScrapedPlayer[] = [];
-    const $rows = $('.responsive-table .items tbody tr, .responsive-table table.items tbody tr, table.items tbody tr');
+    const $rows = $('table.items tbody tr');
 
     $rows.each((_, row) => {
       const $row = $(row);
       const cols = $row.find('td');
-      if (cols.length < 5) return;
+      if (cols.length < 9) return;
 
-      // Numéro de maillot
-      const numText = getText($, $row.find('.rn_nummer, td:first-child'));
+      // td[0]: Numéro de maillot
+      const numText = getText($, cols[0]);
       const number = numText ? parseInt(numText, 10) : null;
 
-      // Nom du joueur
-      const nameEl = $row.find('.spielprofil_tooltip, a[href*="/spieler/"]');
-      const name = getText($, nameEl[0]);
-
+      // td[3]: Nom du joueur
+      const nameLink = $row.find('td.hauptlink a[href*="/spieler/"]');
+      const name = getText($, nameLink[0]);
       if (!name) return;
 
-      // Poste - souvent dans une colonne avec des icônes ou du texte
-      const posEl = $row.find('td:nth-child(2), td:nth-child(3), td.position, td:contains("Gardien"), td:contains("Défenseur"), td:contains("Milieu"), td:contains("Attaquant")');
-      let position = getText($, posEl[0]);
-      const posCode = POSITION_MAP[position] || 'FWD';
+      // td[4]: Poste
+      const posText = getText($, cols[4]);
+      const posCode = POSITION_MAP[posText] || 'FWD';
 
-      // Nationalité (via drapeau ou texte)
-      const flagEl = $row.find('img.flaggen, [class*="flag"]');
-      const nationality = flagEl.attr('alt') || flagEl.attr('title') || '';
+      // td[6]: Nationalité (drapeau)
+      const flagImg = $row.find('td.zentriert img');
+      const nationality = flagImg.attr('alt') || '';
 
-      // Valeur marchande
-      const mvEl = $row.find('.marktwert, td.rechts strong, td:last-child');
-      const mvText = getText($, mvEl[0]);
+      // td[8]: Valeur marchande
+      const mvText = getText($, cols[8]);
       const marketValue = parseMarketValue(mvText);
-
-      // Date de naissance/âge
-      const ageEl = $row.find('td.zentriert:nth-child(3), td:nth-child(4)');
-      const ageText = getText($, ageEl[0]);
 
       players.push({
         name,
         position: posCode,
         number: number && !isNaN(number) ? number : null,
         nationality,
-        birthDate: ageText,
         marketValue,
       });
     });
@@ -112,44 +88,49 @@ export async function scrapeSquad(
     console.log(`[scraper] ${players.length} joueurs trouvés pour ${teamId}`);
     return { teamId, coach, players };
   } catch (err: any) {
-    console.error(`[scraper] Erreur scraping ${teamId}: ${err.message}`);
+    console.error(`[scraper] Erreur ${teamId}: ${err.message}`);
     return null;
   }
 }
 
 /**
- * Met à jour la DB avec les données scrappées
+ * Met à jour la DB avec les données scrappées (compatible SQLite & Neon)
  */
-export function saveSquadToDb(squad: ScrapedSquad): void {
-  // Mettre à jour l'entraîneur
-  if (squad.coach) {
-    db.prepare('UPDATE teams SET coach = ? WHERE id = ?').run(squad.coach, squad.teamId);
-  }
+export async function saveSquadToDb(squad: ScrapedSquad): Promise<void> {
+  const isNeon = !!process.env.DATABASE_URL;
 
-  // Supprimer les anciens joueurs de cette équipe
-  db.prepare('DELETE FROM players WHERE team_id = ?').run(squad.teamId);
+  if (isNeon) {
+    // Neon: utiliser dbRun async
+    if (squad.coach) {
+      await dbRun('UPDATE teams SET coach = ? WHERE id = ?', squad.coach, squad.teamId);
+    }
+    await dbRun('DELETE FROM players WHERE team_id = ?', squad.teamId);
 
-  const insert = db.prepare(`
-    INSERT INTO players (id, name, position, number, nationality, team_id, market_value)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  const insertMany = db.transaction((players: ScrapedPlayer[]) => {
-    for (let i = 0; i < players.length; i++) {
-      const p = players[i];
+    for (const p of squad.players) {
       const playerId = `${squad.teamId}-${p.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')}`;
-      insert.run(
-        playerId,
-        p.name,
-        p.position,
-        p.number || null,
-        p.nationality,
-        squad.teamId,
-        p.marketValue
+      await dbRun(
+        'INSERT INTO players (id, name, position, number, nationality, team_id, market_value) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        playerId, p.name, p.position, p.number || null, p.nationality, squad.teamId, p.marketValue
       );
     }
-  });
+  } else {
+    // SQLite: utiliser db.prepare (transactionnel)
+    if (squad.coach) {
+      db.prepare('UPDATE teams SET coach = ? WHERE id = ?').run(squad.coach, squad.teamId);
+    }
+    db.prepare('DELETE FROM players WHERE team_id = ?').run(squad.teamId);
 
-  insertMany(squad.players);
+    const insert = db.prepare(
+      'INSERT INTO players (id, name, position, number, nationality, team_id, market_value) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    const insertMany = db.transaction((players: ScrapedPlayer[]) => {
+      for (const p of players) {
+        const playerId = `${squad.teamId}-${p.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')}`;
+        insert.run(playerId, p.name, p.position, p.number || null, p.nationality, squad.teamId, p.marketValue);
+      }
+    });
+    insertMany(squad.players);
+  }
+
   console.log(`[scraper] ${squad.players.length} joueurs enregistrés pour ${squad.teamId}`);
 }

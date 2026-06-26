@@ -1,5 +1,5 @@
 import { scrapeStandings, saveStandingsToDb, ScrapedStanding } from './standings';
-import { scrapeSquad, saveSquadToDb, ScrapedSquad } from './squads';
+import { scrapeSquad, saveSquadToDb } from './squads';
 import { scrapeTopScorers, scrapeTopAssisters, ScrapedPlayerStat } from './stats';
 import { scrapeTransfers, ScrapedTransfer } from './transfers';
 import db from '@/lib/db';
@@ -53,7 +53,7 @@ export async function scrapeLeague(
     console.log(`\n--- Scraping effectif: ${team.name} ---`);
     const squad = await scrapeSquad(team.id, season);
     if (squad && squad.players.length > 0) {
-      saveSquadToDb(squad);
+      await saveSquadToDb(squad);
       squadResults.push({
         teamId: team.id,
         players: squad.players.length,
@@ -97,8 +97,11 @@ export async function scrapeLeague(
 export async function scrapeAllLeagues(season: string = '2025'): Promise<ScrapeResults[]> {
   const leagues = [
     'ligue1',
+    'ligue2',
     'premier-league',
     'la-liga',
+    'bundesliga',
+    'serie-a',
   ];
 
   const results: ScrapeResults[] = [];
