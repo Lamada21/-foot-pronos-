@@ -11,10 +11,45 @@ export async function GET() {
       nodeEnv: process.env.NODE_ENV,
     },
     database: {},
+    neonTest: {},
   };
 
+  // Test direct Neon connection
+  if (process.env.DATABASE_URL) {
+    try {
+      const { neon } = await import('@neondatabase/serverless');
+      const sql = neon(process.env.DATABASE_URL!);
+      info.neonTest.imported = true;
+
+      // Try to create a test table
+      await sql.unsafe('CREATE TABLE IF NOT EXISTS _debug_test (id SERIAL PRIMARY KEY, val TEXT)');
+      info.neonTest.createTable = true;
+
+      // Try to insert
+      await sql.unsafe("INSERT INTO _debug_test (val) VALUES ('hello')");
+      info.neonTest.insert = true;
+
+      // Try to read back
+      const result = await sql.unsafe('SELECT * FROM _debug_test');
+      info.neonTest.select = result;
+
+      // Clean up
+      await sql.unsafe('DROP TABLE IF EXISTS _debug_test');
+      info.neonTest.cleanup = true;
+
+      // Also try querying for real tables
+      const realTables = await sql.unsafe(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"
+      );
+      info.neonTest.directTables = realTables;
+    } catch (e: any) {
+      info.neonTest.error = e.message;
+      info.neonTest.errorStack = e.stack?.split('\n').slice(0, 5).join('\n');
+    }
+  }
+
   try {
-    // Check tables
+    // Check tables via dbAll
     const tables = await dbAll(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"
     );
