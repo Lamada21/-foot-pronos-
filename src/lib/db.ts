@@ -35,12 +35,15 @@ let neonQuery: ((sql: string, params?: any[]) => Promise<any[]>) | null = null;
 if (USE_NEON) {
   const { neon } = require('@neondatabase/serverless');
   const sql = neon(process.env.DATABASE_URL!);
+  
   neonQuery = async (queryText: string, params: any[] = []) => {
-    // Convertir ? → $1, $2, ... pour PostgreSQL
-    let idx = 0;
-    const pgSql = queryText.replace(/\?/g, () => `$${++idx}`);
-    // Note: utiliser sql() directement, PAS sql.unsafe() qui ne fait que retourner {sql: query} sans exécuter
-    const result = await sql(pgSql, params);
+    // Utiliser l'API template tag de @neondatabase/serverless (mode recommandé)
+    // On split la requête par '?' et on passe les parties comme TemplateStringsArray
+    // car sql('query') et sql.unsafe() ne font que retourner {sql: query} sans exécuter
+    // dans cette version. Seul le mode template tag exécute réellement la requête.
+    const parts = queryText.split('?');
+    const strings = Object.assign(parts, { raw: [...parts] });
+    const result = await (sql as any)(strings, ...params);
     return Array.isArray(result) ? result : (result as any)?.rows || [];
   };
 }
