@@ -1,16 +1,5 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
-  "installCommand": "npm install",
-  "regions": ["cdg1"],
-  "crons": [
-    {
-      "path": "/api/scrape?mode=standings",
-      "schedule": "0 6 * * 1"
-    }
-  ],
-  "env": {
-    "NEXT_TELEMETRY_DISABLED": "1"
+  "git": {
+    "deploymentEnabled": true
   }
 }
